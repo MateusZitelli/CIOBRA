@@ -23,8 +23,8 @@
 #define HEIGHT 600
 #define BPP 4
 #define DEPTH 32
-#define MAXBODIES 50
-#define PRECISION 0.01
+#define MAXBODIES 4
+#define PRECISION 1
 
 long last;
 
@@ -51,7 +51,8 @@ struct Quad {
 	struct Quad *QC;
 	struct Quad *QD;
 	struct Quad *QUP;
-	struct Body *COM;
+	struct Body COM;
+	short SET;
 	long N;
 	int I;
 };
@@ -80,8 +81,8 @@ void set_quad(struct Quad *Q, double sx, double sy, double ex, double ey,
 	Q->QB = NULL;
 	Q->QC = NULL;
 	Q->QD = NULL;
+	Q->SET = 0;
 	Q->QUP = QUP;
-	Q->COM = NULL;
 	Q->N = 0;
 }
 
@@ -144,45 +145,42 @@ void divide(struct Quad *Q, struct Quad *LQ)
 			Q->QD->B[Q->QD->N++] = Q->B[i];
 		}
 	}
-	//printf("%li\n", last);
 	divide(Q->QA, LQ);
 	divide(Q->QB, LQ);
 	divide(Q->QC, LQ);
 	divide(Q->QD, LQ);
 }
 
-void get_com(struct Quad *Q)
+struct Body get_com(struct Quad *Q)
 {
-	//if (Q->COM != NULL)
-	//	return *Q->COM;
-	long i;
 	struct Body BO;
+	//Q.COM = &BO;
+	int i;
 	BO.P.x = 0;
 	BO.P.y = 0;
 	BO.M = 0;
-	for (i = 0; i < Q->N; i++){
+	for(i = 0; i < Q->N; i++){
 		BO.P.x += Q->B[i]->P.x * Q->B[i]->M;
 		BO.P.y += Q->B[i]->P.y * Q->B[i]->M;
 		BO.M += Q->B[i]->M;
 	}
-	if(BO.C){
-		BO.P.x /= BO.M;
-		BO.P.y /= BO.M;
-	}
-	Q->COM = &BO;
-	//return (BO);
+	BO.P.x /= (float) BO.M;
+	BO.P.y /= (float) BO.M;
+	Q->SET = 1;
+	return(BO);
 }
 
 void apply_force(struct Body *b1, struct Body b2)
 {
 	double F, D, CX, CY;
-	CX = (b1->P.x - b2.P.x) * 10E3;
-	CY = (b1->P.y - b2.P.y) * 10E3;
+	CX = (b1->P.x - b2.P.x);
+	CY = (b1->P.y - b2.P.y);
 	D = CX * CX + CY * CY;	//Disntace squared
-	if(D > 10)
-		F = 9 * 10E5 * b1->M * b2.C / D;
+	if(D > 25)
+		F = 10E3 * b1->M * b2.M / D;
 	b1->F.x -= F * CX / D;
 	b1->F.y -= F * CY / D;
+	printf("%f\n", b1->F.x);
 }
 
 void solve(struct Body *B, struct Quad *Q, int ind, int mode)
@@ -191,10 +189,9 @@ void solve(struct Body *B, struct Quad *Q, int ind, int mode)
 		struct Body COM;
 		double DX, DY;
 		if (Q->QA != NULL && Q->QA->I != ind) {
-			COM = *(Q->QA->COM);
+			COM = Q->QA->COM;
 			DX = COM.P.x - B->P.x;
 			DY = COM.P.y - B->P.y;
-			printf("%f\n", COM.M);
 			if((Q->E.x - Q->S.x) / sqrt(DX * DX + DY * DY) < PRECISION && Q->N > 1){
 				solve(B, Q->QA, ind, 0);
 			}else{
@@ -202,7 +199,7 @@ void solve(struct Body *B, struct Quad *Q, int ind, int mode)
 			}
 		}
 		if (Q->QB != NULL && Q->QB->I != ind) {
-			COM = *(Q->QB->COM);
+			COM = Q->QB->COM;
 			DX = COM.P.x - B->P.x;
 			DY = COM.P.y - B->P.y;
 			if((Q->E.x - Q->S.x) / sqrt(DX * DX + DY * DY) < PRECISION && Q->N > 1){
@@ -212,7 +209,7 @@ void solve(struct Body *B, struct Quad *Q, int ind, int mode)
 			}
 		}
 		if (Q->QC != NULL && Q->QC->I != ind) {
-			COM = *(Q->QC->COM);
+			COM = Q->QC->COM;
 			DX = COM.P.x - B->P.x;
 			DY = COM.P.y - B->P.y;
 			if((Q->E.x - Q->S.x) / sqrt(DX * DX + DY * DY) < PRECISION && Q->N > 1){
@@ -222,7 +219,7 @@ void solve(struct Body *B, struct Quad *Q, int ind, int mode)
 			}
 		}
 		if (Q->QD != NULL && Q->QD->I != ind) {
-			COM = *(Q->QD->COM);
+			COM = Q->QD->COM;
 			DX = COM.P.x - B->P.x;
 			DY = COM.P.y - B->P.y;
 			if((Q->E.x - Q->S.x) / sqrt(DX * DX + DY * DY) < PRECISION && Q->N > 1){
@@ -235,12 +232,11 @@ void solve(struct Body *B, struct Quad *Q, int ind, int mode)
 	if (Q->QUP == NULL)
 		return;
 	if(mode)
-		solve(B, Q->QUP, ind, 1);
+		solve(B, Q->QUP, Q->I, 1);
 }
 
 void apply_forces(struct Body *B)
 {
-	//printf("%f, %f\n", B->P.x, B->P.y);
 	B->V.x += B->F.x / B->M;
 	B->V.y += B->F.y / B->M;
 	B->P.x += B->V.x;
@@ -251,6 +247,7 @@ void apply_forces(struct Body *B)
 
 int main(void)
 {
+
 	srand(time(0));
 	long i = 0;
 	SDL_Surface *screen;
@@ -282,7 +279,12 @@ int main(void)
 		last = 1;
 		divide(&quads[0], quads);
 		for(i = 0; i < last; i++){
-			get_com(&quads[i]);
+			quads[i].COM = get_com(&quads[i]);
+		}
+		for (i = 0; i < MAXBODIES -1; i++) {
+			apply_forces(&bodies[i]);
+			//printf("%f\n", bodies[i].M);
+			filledCircleRGBA(screen, bodies[i].P.x, bodies[i].P.y, bodies[i].M * 1, 255, 0, 0, 255);
 		}
 		for (i = 0; i < last; i++) {
 			#if 0
@@ -290,9 +292,9 @@ int main(void)
 				      quads[i].E.x, quads[i].E.y, 0, 255, 0,
 				      255);
 			#endif
-			#if 1
-			if(quads[i].COM != NULL)
-				setpixel(screen, quads[i].COM->P.x, quads[i].COM->P.y, 255, 255, 255);
+			#if 0
+			if(quads[i].SET)
+				filledCircleRGBA(screen, quads[i].COM.P.x, quads[i].COM.P.y, quads[i].COM.M * 0.00005, 0, 0, 255, 255);
 			#endif
 			if (quads[i].N == 1) {
 				solve(quads[i].B[0], quads[i].QUP, quads[i].I, 1);
@@ -310,13 +312,11 @@ int main(void)
 				break;
 			}
 		}
-		for (i = 0; i < MAXBODIES -1; i++) {
-			apply_forces(&bodies[i]);
-			setpixel(screen, bodies[i].P.x, bodies[i].P.y, 255, 0, 0);
-		}
-		for(i = 1; i < last; i++)
+		for(i = 1; i < last; i++){
 			quads[i].N = 0;
-		//printf("%li\n", last);
+			quads[i].SET = 0;
+		}
+			
 	}
 	free(quads);
 	free(bodies);
